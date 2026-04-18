@@ -28,7 +28,7 @@ async function main() {
     const formatIcon =
       talk.format === 'Quickie' ? '⚡' : talk.format === 'Tools-in-Action' ? '🔧' : '🎯';
     console.log(`  ${formatIcon} [${talk.format}] ${talk.title}`);
-    console.log(`     👤 ${talk.speakerName} | ⏱️  ${talk.duration} min`);
+    console.log(`     👤 ${talk.speakers.join(', ')} | ⏱️  ${talk.duration} min`);
     console.log();
   });
 
@@ -41,13 +41,13 @@ async function main() {
     title: 'Machine-Readable Governance avec GitHub Spec-kit',
     abstract:
       'Comment industrialiser vos ADRs et READMEs pour que la documentation devienne votre meilleur gardien.',
-    speakerName: 'Alex Demo',
+    speakers: ['Alex Demo'],
     duration: 30,
   });
 
   console.log(`  ✅ Talk soumis avec succès !`);
   console.log(`     📌 "${newTalk.title}"`);
-  console.log(`     👤 ${newTalk.speakerName}`);
+  console.log(`     👤 ${newTalk.speakers.join(', ')}`);
   console.log(`     🔧 Format: ${newTalk.format} (${newTalk.duration} min)`);
 
   // Demo 3: Show domain rule enforcement
@@ -59,7 +59,7 @@ async function main() {
       id: 'talk-005',
       title: 'Talk avec durée invalide',
       abstract: 'Ce talk ne devrait pas passer la validation.',
-      speakerName: 'Test Speaker',
+      speakers: ['Test Speaker'],
       duration: 20 as 15, // Invalid duration - will throw
     });
   } catch (error) {

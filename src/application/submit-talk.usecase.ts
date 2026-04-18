@@ -12,7 +12,7 @@ export interface SubmitTalkInput {
   id: string;
   title: string;
   abstract: string;
-  speakerName: string;
+  speakers: string[];
   duration: Duration;
 }
 
@@ -27,7 +27,7 @@ export class SubmitTalkUseCase {
    * @throws Error if validation fails (domain rules)
    */
   async execute(input: SubmitTalkInput): Promise<Talk> {
-    const talk = new Talk(input.id, input.title, input.abstract, input.speakerName, input.duration);
+    const talk = new Talk(input.id, input.title, input.abstract, input.speakers, input.duration);
 
     await this.talkRepository.save(talk);
 
