@@ -1,0 +1,43 @@
+#!/bin/bash
+# =============================================================================
+# speckit — CLI locale Spec-kit (wrapper terminal)
+# =============================================================================
+# Reproduit les commandes IDE /speckit.* en terminal.
+#
+# Usage :
+#   ./speckit specify <feature>    → Génère specs/<feature>/spec.md
+#   ./speckit plan <feature>       → Génère specs/<feature>/plan.md
+#   ./speckit tasks <feature>      → Génère specs/<feature>/tasks.md
+# =============================================================================
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+COMMAND="${1:-}"
+FEATURE="${2:-}"
+
+case "$COMMAND" in
+  specify)
+    exec bash "$SCRIPT_DIR/scripts/speckit/specify.sh" "$FEATURE"
+    ;;
+  plan)
+    exec bash "$SCRIPT_DIR/scripts/speckit/plan.sh" "$FEATURE"
+    ;;
+  tasks)
+    exec bash "$SCRIPT_DIR/scripts/speckit/tasks.sh" "$FEATURE"
+    ;;
+  *)
+    echo ""
+    echo "  speckit — CLI locale Spec-kit"
+    echo ""
+    echo "  Usage :"
+    echo "    ./speckit specify <feature>   Spécification fonctionnelle"
+    echo "    ./speckit plan <feature>      Plan d'implémentation technique"
+    echo "    ./speckit tasks <feature>     Tâches + Phase 0 Governance"
+    echo ""
+    echo "  Exemple :"
+    echo "    ./speckit specify 005-validate-speaker-bio"
+    echo "    ./speckit plan 005-validate-speaker-bio"
+    echo "    ./speckit tasks 005-validate-speaker-bio"
+    echo ""
+    exit 1
+    ;;
+esac

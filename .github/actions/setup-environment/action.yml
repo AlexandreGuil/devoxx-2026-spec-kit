@@ -1,0 +1,65 @@
+name: 'Setup Spec-kit Environment'
+description: 'Sets up Node.js, Python, uv, Spec-kit CLI and Claude Code CLI'
+
+inputs:
+  node-version:
+    description: 'Node.js version'
+    required: false
+    default: '22'
+  python-version:
+    description: 'Python version'
+    required: false
+    default: '3.12'
+  install-claude-cli:
+    description: 'Install Claude Code CLI'
+    required: false
+    default: 'true'
+  install-speckit-cli:
+    description: 'Install Spec-kit CLI'
+    required: false
+    default: 'true'
+
+outputs:
+  cache-hit:
+    description: 'Whether npm dependencies were cached'
+    value: ${{ steps.npm-cache.outputs.cache-hit }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: 'npm'
+      id: npm-cache
+
+    - name: Install npm dependencies
+      shell: bash
+      run: npm ci
+
+    - name: Setup Python
+      if: ${{ inputs.install-speckit-cli == 'true' }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install uv
+      if: ${{ inputs.install-speckit-cli == 'true' }}
+      uses: astral-sh/setup-uv@v5
+
+    - name: Install Spec-kit CLI
+      if: ${{ inputs.install-speckit-cli == 'true' }}
+      shell: bash
+      run: |
+        echo "📦 Installing Spec-kit CLI..."
+        uv tool install specify-cli --from git+https://github.com/github/spec-kit.git
+        echo "✅ Spec-kit CLI installed"
+
+    - name: Install Claude Code CLI
+      if: ${{ inputs.install-claude-cli == 'true' }}
+      shell: bash
+      run: |
+        echo "📦 Installing Claude Code CLI..."
+        npm install -g @anthropic-ai/claude-code
+        echo "✅ Claude Code CLI installed"

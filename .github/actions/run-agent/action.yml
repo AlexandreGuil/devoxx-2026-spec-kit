@@ -1,0 +1,142 @@
+name: 'Run Governance Agent'
+description: 'Executes a governance validation agent with standardized I/O'
+
+inputs:
+  agent-name:
+    description: 'Agent name: structure-validator, adr-reviewer, or coherence-checker'
+    required: true
+  changed-files:
+    description: 'Space-separated list of changed files'
+    required: false
+    default: ''
+  branch-name:
+    description: 'Current branch name'
+    required: false
+    default: ''
+  feature-name:
+    description: 'Feature name extracted from branch'
+    required: false
+    default: ''
+  domain-changes:
+    description: 'Domain/application file changes (for ADR agent)'
+    required: false
+    default: ''
+  adr-changes:
+    description: 'ADR file changes (for ADR agent)'
+    required: false
+    default: ''
+  # Spec-kit context inputs
+  has-specs:
+    description: 'Whether Spec-kit artifacts exist (true/false)'
+    required: false
+    default: 'false'
+  validation-mode:
+    description: 'Validation mode: speckit or legacy'
+    required: false
+    default: 'legacy'
+  planned-files:
+    description: 'JSON array of planned files from plan.md'
+    required: false
+    default: '[]'
+  user-stories:
+    description: 'JSON array of user stories from spec.md'
+    required: false
+    default: '[]'
+  governance-tasks:
+    description: 'JSON array of TGOV governance tasks from tasks.md'
+    required: false
+    default: '[]'
+
+outputs:
+  status:
+    description: 'Agent status (PASS/FAIL/NEEDS_REVIEW)'
+    value: ${{ steps.run-agent.outputs.status }}
+  score:
+    description: 'Agent score (0-100)'
+    value: ${{ steps.run-agent.outputs.score }}
+  report-json:
+    description: 'Path to JSON report'
+    value: ${{ steps.run-agent.outputs.report-json }}
+  report-md:
+    description: 'Path to Markdown report'
+    value: ${{ steps.run-agent.outputs.report-md }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Run Agent
+      id: run-agent
+      shell: bash
+      env:
+        CHANGED_FILES: ${{ inputs.changed-files }}
+        BRANCH_NAME: ${{ inputs.branch-name }}
+        FEATURE_NAME: ${{ inputs.feature-name }}
+        DOMAIN_CHANGES: ${{ inputs.domain-changes }}
+        ADR_CHANGES: ${{ inputs.adr-changes }}
+        REQUIRE_AI_ANALYSIS: 'true'
+        # Spec-kit context
+        SPECKIT_HAS_SPECS: ${{ inputs.has-specs }}
+        SPECKIT_VALIDATION_MODE: ${{ inputs.validation-mode }}
+        SPECKIT_PLANNED_FILES: ${{ inputs.planned-files }}
+        SPECKIT_USER_STORIES: ${{ inputs.user-stories }}
+        SPECKIT_GOVERNANCE_TASKS: ${{ inputs.governance-tasks }}
+      run: |
+        AGENT_SCRIPT=".github/scripts/agent-${{ inputs.agent-name }}.sh"
+
+        echo "═══════════════════════════════════════════════════════════════"
+        echo "  🤖 Running Agent: ${{ inputs.agent-name }}"
+        echo "═══════════════════════════════════════════════════════════════"
+        echo "Branch: $BRANCH_NAME"
+        echo "Feature: $FEATURE_NAME"
+        echo "Changed files: $CHANGED_FILES"
+        echo "Spec-kit mode: $SPECKIT_VALIDATION_MODE"
+        echo ""
+
+        # Make script executable
+        chmod +x "$AGENT_SCRIPT"
+
+        # Run agent script
+        AGENT_EXIT_CODE=0
+        "$AGENT_SCRIPT" || AGENT_EXIT_CODE=$?
+
+        # Determine report file names based on agent
+        case "${{ inputs.agent-name }}" in
+          "structure-validator")
+            JSON_REPORT="structure-validation-report.json"
+            MD_REPORT="structure-validation-report.md"
+            ;;
+          "structure-validator")
+            JSON_REPORT="adr-review-report.json"
+            MD_REPORT="adr-review-report.md"
+            ;;
+          "coherence-checker")
+            JSON_REPORT="coherence-check-report.json"
+            MD_REPORT="coherence-check-report.md"
+            ;;
+          *)
+            JSON_REPORT="${{ inputs.agent-name }}-report.json"
+            MD_REPORT="${{ inputs.agent-name }}-report.md"
+            ;;
+        esac
+
+        # Extract status and score from JSON report
+        if [ -f "$JSON_REPORT" ]; then
+          STATUS=$(jq -r '.status // "UNKNOWN"' "$JSON_REPORT" 2>/dev/null || echo "UNKNOWN")
+          SCORE=$(jq -r '.overall_coherence_score // .score // 100' "$JSON_REPORT" 2>/dev/null || echo "100")
+        else
+          if [ $AGENT_EXIT_CODE -eq 0 ]; then
+            STATUS="PASS"
+            SCORE=100
+          else
+            STATUS="FAIL"
+            SCORE=0
+          fi
+        fi
+
+        echo "status=$STATUS" >> $GITHUB_OUTPUT
+        echo "score=$SCORE" >> $GITHUB_OUTPUT
+        echo "report-json=$JSON_REPORT" >> $GITHUB_OUTPUT
+        echo "report-md=$MD_REPORT" >> $GITHUB_OUTPUT
+
+        echo ""
+        echo "📊 Agent Result: $STATUS (Score: $SCORE)"

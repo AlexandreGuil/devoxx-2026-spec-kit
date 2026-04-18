@@ -1,0 +1,448 @@
+# Spec-kit Governance Compliance Workflow (Modular Architecture)
+# ==============================================================
+#
+# ARCHITECTURE:
+# - Orchestrator: This file (calls reusable workflows)
+# - Agents: _agent-structure.yml, _agent-adr.yml, _agent-coherence.yml
+# - Actions: setup-environment, run-agent, post-pr-comment
+#
+# EXECUTION FLOW:
+# 1. prepare: Get changed files, detect feature
+# 2. agents (parallel): Structure, ADR, Coherence validation
+# 3. aggregate: Combine results, post user-friendly PR comment
+#
+# SETUP:
+# 1. Get an API key from https://console.anthropic.com/
+# 2. Add it as a secret named ANTHROPIC_API_KEY in your repo settings
+
+name: "Spec-kit Governance Check"
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: governance-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+env:
+  COMPLIANCE_THRESHOLD: 80
+
+# ============================================================
+# JOBS
+# ============================================================
+
+jobs:
+  # ----------------------------------------------------------
+  # PREPARE: Detect changes and extract context
+  # ----------------------------------------------------------
+  prepare:
+    name: "📋 Prepare Analysis"
+    runs-on: ubuntu-latest
+    outputs:
+      skip: ${{ steps.check-files.outputs.skip }}
+      changed-files: ${{ steps.changed-files.outputs.all_changed_files }}
+      branch-name: ${{ steps.context.outputs.branch-name }}
+      feature-name: ${{ steps.context.outputs.feature-name }}
+      domain-changes: ${{ steps.context.outputs.domain-changes }}
+      adr-changes: ${{ steps.context.outputs.adr-changes }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: "🎨 Display Spec-Kit Banner"
+        run: |
+          echo ""
+          echo "╔═══════════════════════════════════════════════════════════════╗"
+          echo "║                                                               ║"
+          echo "║   ███████╗██████╗ ███████╗ ██████╗    ██╗  ██╗██╗████████╗    ║"
+          echo "║   ██╔════╝██╔══██╗██╔════╝██╔════╝    ██║ ██╔╝██║╚══██╔══╝    ║"
+          echo "║   ███████╗██████╔╝█████╗  ██║         █████╔╝ ██║   ██║       ║"
+          echo "║   ╚════██║██╔═══╝ ██╔══╝  ██║         ██╔═██╗ ██║   ██║       ║"
+          echo "║   ███████║██║     ███████╗╚██████╗    ██║  ██╗██║   ██║       ║"
+          echo "║   ╚══════╝╚═╝     ╚══════╝ ╚═════╝    ╚═╝  ╚═╝╚═╝   ╚═╝       ║"
+          echo "║                                                               ║"
+          echo "║               Governance Compliance Pipeline                  ║"
+          echo "║                                                               ║"
+          echo "║                                                               ║"
+          echo "╚═══════════════════════════════════════════════════════════════╝"
+          echo ""
+
+      - name: 📂 Get changed files
+        id: changed-files
+        uses: tj-actions/changed-files@v46
+        with:
+          files: |
+            src/**/*.ts
+            docs/adrs/**/*.md
+            .specify/**
+            specs/**
+
+      - name: 🔍 Check if relevant files changed
+        id: check-files
+        run: |
+          if [ -z "${{ steps.changed-files.outputs.all_changed_files }}" ]; then
+            echo "skip=true" >> $GITHUB_OUTPUT
+            echo "📭 No relevant files changed"
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+            echo "📁 Files to analyze:"
+            echo "${{ steps.changed-files.outputs.all_changed_files }}"
+          fi
+
+      - name: 🏷️ Extract context
+        id: context
+        run: |
+          BRANCH="${{ github.head_ref || github.ref_name }}"
+          FEATURE=$(echo "$BRANCH" | sed 's/feat\///' | sed 's/feature\///')
+
+          echo "branch-name=$BRANCH" >> $GITHUB_OUTPUT
+          echo "feature-name=$FEATURE" >> $GITHUB_OUTPUT
+
+          # Extract domain/application changes
+          DOMAIN_CHANGES=$(echo "${{ steps.changed-files.outputs.all_changed_files }}" | tr ' ' '\n' | grep -E "^src/(domain|application)/" | tr '\n' ' ' || true)
+          ADR_CHANGES=$(echo "${{ steps.changed-files.outputs.all_changed_files }}" | tr ' ' '\n' | grep -E "^docs/adrs/.*\.md$" | tr '\n' ' ' || true)
+
+          echo "domain-changes=$DOMAIN_CHANGES" >> $GITHUB_OUTPUT
+          echo "adr-changes=$ADR_CHANGES" >> $GITHUB_OUTPUT
+
+          echo "📌 Branch: $BRANCH"
+          echo "📌 Feature: $FEATURE"
+          echo "📌 Domain changes: $DOMAIN_CHANGES"
+          echo "📌 ADR changes: $ADR_CHANGES"
+
+  # ----------------------------------------------------------
+  # LOAD SPEC-KIT CONTEXT: Read spec artifacts for validation
+  # ----------------------------------------------------------
+  load-context:
+    name: "📖 Load Spec-kit Context"
+    needs: prepare
+    if: needs.prepare.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      has-specs: ${{ steps.context.outputs.has-specs }}
+      spec-dir: ${{ steps.context.outputs.spec-dir }}
+      validation-mode: ${{ steps.context.outputs.validation-mode }}
+      user-stories: ${{ steps.context.outputs.user-stories }}
+      planned-files: ${{ steps.context.outputs.planned-files }}
+      governance-tasks: ${{ steps.context.outputs.governance-tasks }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Load Spec-kit Context
+        id: context
+        uses: ./.github/actions/load-speckit-context
+        with:
+          feature-name: ${{ needs.prepare.outputs.feature-name }}
+
+      - name: Upload Context Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: speckit-context
+          path: speckit-context.json
+          retention-days: 7
+          if-no-files-found: warn
+
+  # ----------------------------------------------------------
+  # AGENT 1: Structure Validator (parallel)
+  # ----------------------------------------------------------
+  agent-structure:
+    name: "🔍 Structure Validator"
+    needs: [prepare, load-context]
+    if: needs.prepare.outputs.skip != 'true'
+    uses: ./.github/workflows/_agent-structure.yml
+    with:
+      changed-files: ${{ needs.prepare.outputs.changed-files }}
+      branch-name: ${{ needs.prepare.outputs.branch-name }}
+      feature-name: ${{ needs.prepare.outputs.feature-name }}
+      # Spec-kit context
+      has-specs: ${{ needs.load-context.outputs.has-specs }}
+      validation-mode: ${{ needs.load-context.outputs.validation-mode }}
+      planned-files: ${{ needs.load-context.outputs.planned-files }}
+    secrets:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
+  # ----------------------------------------------------------
+  # AGENT 2: ADR Reviewer (parallel)
+  # ----------------------------------------------------------
+  agent-adr:
+    name: "📚 ADR Reviewer"
+    needs: [prepare, load-context]
+    if: needs.prepare.outputs.skip != 'true'
+    uses: ./.github/workflows/_agent-adr.yml
+    with:
+      changed-files: ${{ needs.prepare.outputs.changed-files }}
+      branch-name: ${{ needs.prepare.outputs.branch-name }}
+      feature-name: ${{ needs.prepare.outputs.feature-name }}
+      domain-changes: ${{ needs.prepare.outputs.domain-changes }}
+      adr-changes: ${{ needs.prepare.outputs.adr-changes }}
+      # Spec-kit context
+      has-specs: ${{ needs.load-context.outputs.has-specs }}
+      validation-mode: ${{ needs.load-context.outputs.validation-mode }}
+      governance-tasks: ${{ needs.load-context.outputs.governance-tasks }}
+    secrets:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
+  # ----------------------------------------------------------
+  # AGENT 3: Coherence Checker (parallel)
+  # ----------------------------------------------------------
+  agent-coherence:
+    name: "🔗 Coherence Checker"
+    needs: [prepare, load-context]
+    if: needs.prepare.outputs.skip != 'true'
+    uses: ./.github/workflows/_agent-coherence.yml
+    with:
+      changed-files: ${{ needs.prepare.outputs.changed-files }}
+      branch-name: ${{ needs.prepare.outputs.branch-name }}
+      feature-name: ${{ needs.prepare.outputs.feature-name }}
+      # Spec-kit context
+      has-specs: ${{ needs.load-context.outputs.has-specs }}
+      validation-mode: ${{ needs.load-context.outputs.validation-mode }}
+      user-stories: ${{ needs.load-context.outputs.user-stories }}
+    secrets:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
+  # ----------------------------------------------------------
+  # AGGREGATE: Combine results and post PR comment
+  # ----------------------------------------------------------
+  aggregate:
+    name: "📊 Aggregate & Report"
+    needs: [prepare, load-context, agent-structure, agent-adr, agent-coherence]
+    if: always() && needs.prepare.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+
+      - name: List downloaded artifacts
+        run: ls -la *.json *.md 2>/dev/null || echo "No report files found"
+
+      - name: 📊 Calculate overall score
+        id: calculate
+        run: |
+          # Get statuses from job outputs
+          STRUCTURE_STATUS="${{ needs.agent-structure.outputs.status }}"
+          ADR_STATUS="${{ needs.agent-adr.outputs.status }}"
+          COHERENCE_STATUS="${{ needs.agent-coherence.outputs.status }}"
+
+          echo "Structure: $STRUCTURE_STATUS"
+          echo "ADR: $ADR_STATUS"
+          echo "Coherence: $COHERENCE_STATUS"
+
+          # Read actual scores from agent JSON reports
+          STRUCTURE_SCORE=0
+          ADR_SCORE=0
+          COHERENCE_SCORE=0
+
+          if [ -f "structure-validation-report.json" ]; then
+            STRUCTURE_SCORE=$(jq -r '.score // 0' structure-validation-report.json 2>/dev/null || echo "0")
+          fi
+          if [ -f "adr-review-report.json" ]; then
+            ADR_SCORE=$(jq -r '.score // 0' adr-review-report.json 2>/dev/null || echo "0")
+          fi
+          if [ -f "coherence-check-report.json" ]; then
+            COHERENCE_SCORE=$(jq -r '.overall_coherence_score // 0' coherence-check-report.json 2>/dev/null || echo "0")
+          fi
+
+          echo "Structure Score: $STRUCTURE_SCORE"
+          echo "ADR Score: $ADR_SCORE"
+          echo "Coherence Score: $COHERENCE_SCORE"
+
+          # Use coherence score as primary (it now checks ADR relevance + Spec-kit + Architecture)
+          # ADR and Structure agents provide qualitative checks
+          OVERALL_SCORE=$COHERENCE_SCORE
+
+          # Bonus/penalty from other agents
+          if [ "$ADR_STATUS" = "FAIL" ]; then
+            OVERALL_SCORE=$((OVERALL_SCORE - 20))
+          elif [ "$ADR_STATUS" = "PASS" ] && [ "$OVERALL_SCORE" -lt 90 ]; then
+            OVERALL_SCORE=$((OVERALL_SCORE + 5))
+          fi
+
+          if [ "$STRUCTURE_STATUS" = "FAIL" ]; then
+            OVERALL_SCORE=$((OVERALL_SCORE - 10))
+          fi
+
+          # Clamp to 0-100
+          [ "$OVERALL_SCORE" -lt 0 ] && OVERALL_SCORE=0
+          [ "$OVERALL_SCORE" -gt 100 ] && OVERALL_SCORE=100
+
+          # Fallback to status-based calculation if scores are 0
+          if [ "$OVERALL_SCORE" -eq 0 ]; then
+            if [ "$STRUCTURE_STATUS" = "FAIL" ] || [ "$ADR_STATUS" = "FAIL" ] || [ "$COHERENCE_STATUS" = "FAIL" ]; then
+              OVERALL_SCORE=30
+            elif [ "$STRUCTURE_STATUS" = "NEEDS_REVIEW" ] || [ "$ADR_STATUS" = "NEEDS_REVIEW" ] || [ "$COHERENCE_STATUS" = "NEEDS_REVIEW" ]; then
+              OVERALL_SCORE=70
+            else
+              OVERALL_SCORE=100
+            fi
+          fi
+
+          # Determine overall status
+          if [ "$STRUCTURE_STATUS" = "FAIL" ] || [ "$ADR_STATUS" = "FAIL" ] || [ "$COHERENCE_STATUS" = "FAIL" ]; then
+            OVERALL_STATUS="FAIL"
+          elif [ "$STRUCTURE_STATUS" = "NEEDS_REVIEW" ] || [ "$ADR_STATUS" = "NEEDS_REVIEW" ] || [ "$COHERENCE_STATUS" = "NEEDS_REVIEW" ]; then
+            OVERALL_STATUS="NEEDS_REVIEW"
+          else
+            OVERALL_STATUS="PASS"
+          fi
+
+          # Check if score meets threshold
+          if [ $OVERALL_SCORE -ge ${{ env.COMPLIANCE_THRESHOLD }} ]; then
+            PASSED="true"
+          else
+            PASSED="false"
+          fi
+
+          echo "status=$OVERALL_STATUS" >> $GITHUB_OUTPUT
+          echo "score=$OVERALL_SCORE" >> $GITHUB_OUTPUT
+          echo "passed=$PASSED" >> $GITHUB_OUTPUT
+
+          echo ""
+          echo "═══════════════════════════════════════════════════════════════"
+          echo "  📊 OVERALL SCORE: $OVERALL_SCORE/100 ($OVERALL_STATUS)"
+          echo "═══════════════════════════════════════════════════════════════"
+
+      - name: 📝 Generate formatted PR comment
+        run: |
+          node .github/scripts/format-pr-comment.js \
+            --structure "structure-validation-report.json" \
+            --adr "adr-review-report.json" \
+            --adr-md "adr-review-report.md" \
+            --coherence "coherence-check-report.json" \
+            --coherence-md "coherence-check-report.md" \
+            --speckit-context "speckit-context.json" \
+            --status "${{ steps.calculate.outputs.status }}" \
+            --score "${{ steps.calculate.outputs.score }}" \
+            --threshold "${{ env.COMPLIANCE_THRESHOLD }}" \
+            --validation-mode "${{ needs.load-context.outputs.validation-mode || 'legacy' }}" \
+            --feature-name "${{ needs.prepare.outputs.feature-name }}" \
+            --output "pr-comment.md"
+
+      - name: 📝 Output to GitHub Step Summary
+        run: |
+          if [ -f "pr-comment.md" ]; then
+            cat pr-comment.md >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ No PR comment generated" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: 💬 Post PR comment
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+
+            // Read the formatted comment
+            let comment = '';
+            if (fs.existsSync('pr-comment.md')) {
+              comment = fs.readFileSync('pr-comment.md', 'utf8');
+            } else {
+              comment = '## 🛡️ Spec-kit Governance Report\n\n⚠️ Report generation failed.';
+            }
+
+            // Add marker for idempotent updates
+            const marker = '<!-- spec-kit-governance-report -->';
+            const body = marker + '\n' + comment;
+
+            // Find existing comment
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const existing = comments.find(c => c.body && c.body.includes(marker));
+
+            if (existing) {
+              // Update existing comment
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body: body
+              });
+              console.log('✅ Updated existing PR comment');
+            } else {
+              // Create new comment
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: body
+              });
+              console.log('✅ Created new PR comment');
+            }
+
+      - name: 📦 Upload final report
+        uses: actions/upload-artifact@v4
+        with:
+          name: governance-final-report
+          path: |
+            pr-comment.md
+            *.json
+          retention-days: 30
+          if-no-files-found: ignore
+
+      - name: "✅ Governance Passed"
+        if: steps.calculate.outputs.passed == 'true'
+        run: |
+          echo ""
+          echo "╔═══════════════════════════════════════════════════════════════╗"
+          echo "║  ✅ GOVERNANCE COMPLIANCE: PASSED                             ║"
+          echo "║  Score: ${{ steps.calculate.outputs.score }}/100              ║"
+          echo "╚═══════════════════════════════════════════════════════════════╝"
+
+      - name: "❌ Governance Failed"
+        if: steps.calculate.outputs.passed != 'true'
+        run: |
+          echo ""
+          echo "╔═══════════════════════════════════════════════════════════════╗"
+          echo "║  ❌ GOVERNANCE COMPLIANCE: FAILED                             ║"
+          echo "║  Score: ${{ steps.calculate.outputs.score }}/${{ env.COMPLIANCE_THRESHOLD }}  ║"
+          echo "╚═══════════════════════════════════════════════════════════════╝"
+          exit 1
+
+  # ----------------------------------------------------------
+  # SKIP: When no relevant files changed
+  # ----------------------------------------------------------
+  skip-notification:
+    name: "⏭️ Skip Notification"
+    needs: prepare
+    if: needs.prepare.outputs.skip == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Post skip notice
+        run: |
+          echo "# ⏭️ Governance Check Skipped" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "No changes detected in monitored paths:" >> $GITHUB_STEP_SUMMARY
+          echo "- \`src/**/*.ts\`" >> $GITHUB_STEP_SUMMARY
+          echo "- \`docs/adrs/**/*.md\`" >> $GITHUB_STEP_SUMMARY
+          echo "- \`.specify/**\`" >> $GITHUB_STEP_SUMMARY

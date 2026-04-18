@@ -1,0 +1,224 @@
+name: 'Load Spec-kit Context'
+description: 'Reads spec.md, plan.md, tasks.md and extracts context for CI agents'
+
+inputs:
+  feature-name:
+    description: 'Feature name (from branch)'
+    required: true
+
+outputs:
+  has-specs:
+    description: 'Whether spec files exist (true/false)'
+    value: ${{ steps.load.outputs.has-specs }}
+  spec-dir:
+    description: 'Path to spec directory'
+    value: ${{ steps.load.outputs.spec-dir }}
+  user-stories:
+    description: 'JSON array of user stories from spec.md'
+    value: ${{ steps.load.outputs.user-stories }}
+  planned-files:
+    description: 'JSON array of files to modify from plan.md'
+    value: ${{ steps.load.outputs.planned-files }}
+  governance-tasks:
+    description: 'JSON array of TGOV tasks from tasks.md'
+    value: ${{ steps.load.outputs.governance-tasks }}
+  validation-mode:
+    description: 'Validation mode: speckit or legacy'
+    value: ${{ steps.load.outputs.validation-mode }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Load Spec-kit Context
+      id: load
+      shell: bash
+      run: |
+        FEATURE="${{ inputs.feature-name }}"
+
+        echo ""
+        echo "╔═══════════════════════════════════════════════════════════════╗"
+        echo "║  📖 SPEC-KIT CONTEXT LOADER                                   ║"
+        echo "╠═══════════════════════════════════════════════════════════════╣"
+        echo "║  Feature: $FEATURE"
+        echo "╚═══════════════════════════════════════════════════════════════╝"
+        echo ""
+
+        # Find spec directory (check both official locations)
+        SPEC_DIR=""
+        if [ -d ".specify/specs/$FEATURE" ]; then
+          SPEC_DIR=".specify/specs/$FEATURE"
+        elif [ -d "specs/$FEATURE" ]; then
+          SPEC_DIR="specs/$FEATURE"
+        fi
+
+        # If no feature-specific dir, check for any specs
+        if [ -z "$SPEC_DIR" ]; then
+          # Try to find most recent spec directory
+          LATEST_SPEC=$(find .specify/specs specs -maxdepth 1 -type d 2>/dev/null | grep -v "^.specify/specs$" | grep -v "^specs$" | head -1 || true)
+          if [ -n "$LATEST_SPEC" ]; then
+            SPEC_DIR="$LATEST_SPEC"
+            echo "📁 Using latest spec directory: $SPEC_DIR"
+          fi
+        fi
+
+        if [ -z "$SPEC_DIR" ] || [ ! -d "$SPEC_DIR" ]; then
+          echo ""
+          echo "┌─────────────────────────────────────────────────────────────────┐"
+          echo "│  ⚠️  NO SPEC-KIT ARTIFACTS FOUND                                │"
+          echo "├─────────────────────────────────────────────────────────────────┤"
+          echo "│                                                                 │"
+          echo "│  Searched in:                                                   │"
+          echo "│    • .specify/specs/$FEATURE/                                   │"
+          echo "│    • specs/$FEATURE/                                            │"
+          echo "│                                                                 │"
+          echo "│  CI will run in LEGACY FALLBACK mode                           │"
+          echo "│                                                                 │"
+          echo "│  💡 To enable Spec-kit driven validation:                       │"
+          echo "│     1. /speckit.specify - Create specification                  │"
+          echo "│     2. /speckit.plan    - Generate technical plan               │"
+          echo "│     3. /speckit.tasks   - Generate governance tasks             │"
+          echo "│                                                                 │"
+          echo "└─────────────────────────────────────────────────────────────────┘"
+          echo ""
+
+          echo "has-specs=false" >> $GITHUB_OUTPUT
+          echo "spec-dir=" >> $GITHUB_OUTPUT
+          {
+            echo "user-stories<<EOFUS"
+            echo "[]"
+            echo "EOFUS"
+          } >> $GITHUB_OUTPUT
+          {
+            echo "planned-files<<EOFPF"
+            echo "[]"
+            echo "EOFPF"
+          } >> $GITHUB_OUTPUT
+          {
+            echo "governance-tasks<<EOFGT"
+            echo "[]"
+            echo "EOFGT"
+          } >> $GITHUB_OUTPUT
+          echo "validation-mode=legacy" >> $GITHUB_OUTPUT
+
+          # Create empty context file
+          echo '{"has_specs":false,"validation_mode":"legacy","feature":"'$FEATURE'"}' > speckit-context.json
+          exit 0
+        fi
+
+        echo "✅ Found spec directory: $SPEC_DIR"
+        echo ""
+        echo "has-specs=true" >> $GITHUB_OUTPUT
+        echo "spec-dir=$SPEC_DIR" >> $GITHUB_OUTPUT
+        echo "validation-mode=speckit" >> $GITHUB_OUTPUT
+
+        # Check which files exist
+        SPEC_MD_EXISTS="false"
+        PLAN_MD_EXISTS="false"
+        TASKS_MD_EXISTS="false"
+
+        [ -f "$SPEC_DIR/spec.md" ] && SPEC_MD_EXISTS="true"
+        [ -f "$SPEC_DIR/plan.md" ] && PLAN_MD_EXISTS="true"
+        [ -f "$SPEC_DIR/tasks.md" ] && TASKS_MD_EXISTS="true"
+
+        echo "📄 Artifacts found:"
+        echo "   spec.md:  $SPEC_MD_EXISTS"
+        echo "   plan.md:  $PLAN_MD_EXISTS"
+        echo "   tasks.md: $TASKS_MD_EXISTS"
+        echo ""
+
+        # Extract user stories from spec.md
+        USER_STORIES="[]"
+        USER_STORIES_COUNT=0
+        if [ "$SPEC_MD_EXISTS" = "true" ]; then
+          # Extract lines starting with "**US" or "- As a" or "## US"
+          GREP_RESULT=$(grep -E "^\*\*US|^- As a|^## US" "$SPEC_DIR/spec.md" 2>/dev/null || true)
+          if [ -n "$GREP_RESULT" ]; then
+            USER_STORIES=$(echo "$GREP_RESULT" | jq -R -s 'split("\n") | map(select(length > 0))')
+          fi
+          USER_STORIES_COUNT=$(echo "$USER_STORIES" | jq -r 'length')
+          echo "📋 User stories extracted: $USER_STORIES_COUNT"
+        fi
+
+        # Write to GitHub Output using multiline format for JSON arrays
+        {
+          echo "user-stories<<EOFUS"
+          echo "$USER_STORIES" | jq -c '.'
+          echo "EOFUS"
+        } >> $GITHUB_OUTPUT
+
+        # Extract planned files from plan.md
+        PLANNED_FILES="[]"
+        PLANNED_FILES_COUNT=0
+        if [ "$PLAN_MD_EXISTS" = "true" ]; then
+          # Extract file paths (lines containing src/ or docs/)
+          GREP_RESULT=$(grep -oE "(src|docs)/[^\s\`\)\"\']+" "$SPEC_DIR/plan.md" 2>/dev/null | sort -u || true)
+          if [ -n "$GREP_RESULT" ]; then
+            PLANNED_FILES=$(echo "$GREP_RESULT" | jq -R -s 'split("\n") | map(select(length > 0))')
+          fi
+          PLANNED_FILES_COUNT=$(echo "$PLANNED_FILES" | jq -r 'length')
+          echo "📁 Planned files extracted: $PLANNED_FILES_COUNT"
+        fi
+
+        {
+          echo "planned-files<<EOFPF"
+          echo "$PLANNED_FILES" | jq -c '.'
+          echo "EOFPF"
+        } >> $GITHUB_OUTPUT
+
+        # Extract governance tasks from tasks.md
+        GOV_TASKS="[]"
+        GOV_TASKS_COUNT=0
+        if [ "$TASKS_MD_EXISTS" = "true" ]; then
+          # Extract TGOV tasks
+          GREP_RESULT=$(grep -E "TGOV-[0-9]+" "$SPEC_DIR/tasks.md" 2>/dev/null || true)
+          if [ -n "$GREP_RESULT" ]; then
+            GOV_TASKS=$(echo "$GREP_RESULT" | jq -R -s 'split("\n") | map(select(length > 0))')
+          fi
+          GOV_TASKS_COUNT=$(echo "$GOV_TASKS" | jq -r 'length')
+          echo "🛡️ Governance tasks extracted: $GOV_TASKS_COUNT"
+        fi
+
+        {
+          echo "governance-tasks<<EOFGT"
+          echo "$GOV_TASKS" | jq -c '.'
+          echo "EOFGT"
+        } >> $GITHUB_OUTPUT
+
+        # Build full context JSON
+        cat > speckit-context.json << EOF
+        {
+          "has_specs": true,
+          "validation_mode": "speckit",
+          "feature": "$FEATURE",
+          "spec_dir": "$SPEC_DIR",
+          "artifacts": {
+            "spec_md": $SPEC_MD_EXISTS,
+            "plan_md": $PLAN_MD_EXISTS,
+            "tasks_md": $TASKS_MD_EXISTS
+          },
+          "counts": {
+            "user_stories": $USER_STORIES_COUNT,
+            "planned_files": $PLANNED_FILES_COUNT,
+            "governance_tasks": $GOV_TASKS_COUNT
+          },
+          "user_stories": $USER_STORIES,
+          "planned_files": $PLANNED_FILES,
+          "governance_tasks": $GOV_TASKS
+        }
+        EOF
+
+        echo ""
+        echo "┌─────────────────────────────────────────────────────────────────┐"
+        echo "│  ✅ SPEC-KIT CONTEXT LOADED SUCCESSFULLY                        │"
+        echo "├─────────────────────────────────────────────────────────────────┤"
+        echo "│                                                                 │"
+        echo "│  📊 Context Summary:                                            │"
+        echo "│     Spec dir:         $SPEC_DIR"
+        echo "│     User stories:     $USER_STORIES_COUNT"
+        echo "│     Planned files:    $PLANNED_FILES_COUNT"
+        echo "│     Governance tasks: $GOV_TASKS_COUNT"
+        echo "│                                                                 │"
+        echo "│  🎯 Validation Mode:  SPEC-KIT DRIVEN                          │"
+        echo "│                                                                 │"
+        echo "└─────────────────────────────────────────────────────────────────┘"
+        echo ""

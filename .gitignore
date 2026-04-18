@@ -1,0 +1,22 @@
+node_modules/
+dist/
+build/
+coverage/
+*.log
+.DS_Store
+.env
+.env.*
+.env.demo
+*.tmp
+*.swp
+.vscode/
+.idea/
+
+# Screenshots et vidéos (ne pas tracker les binaires)
+Capture d*
+*.mp4
+*.gif
+*.webm
+
+# Screenshots demo (generes par freeze)
+scripts/demo/screenshots/

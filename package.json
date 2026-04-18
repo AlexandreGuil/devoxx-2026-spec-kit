@@ -1,0 +1,62 @@
+{
+  "name": "devoxx-2026-spec-kit-poc",
+  "version": "0.1.0",
+  "description": "POC Devoxx 2026 : Démonstration de gouvernance automatisée avec GitHub Spec-kit",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/infrastructure/cli.js",
+    "dev": "npx tsx src/infrastructure/cli.ts",
+    "test": "vitest",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest --coverage",
+    "prepare": "husky install",
+    "format": "prettier --write .",
+    "lint": "eslint \"src/**/*.{ts,tsx,js,jsx}\" --ext .ts,.tsx,.js,.jsx",
+    "lint:fix": "eslint --fix \"src/**/*.{ts,tsx,js,jsx}\"",
+    "test:compliance": "node scripts/check-structure.cjs",
+    "precommit:install": "pre-commit install || echo \"Please install pre-commit (pip install pre-commit) to enable git hooks\"",
+    "precommit:run": "pre-commit run --all-files || true",
+    "gh:set-secret": "bash scripts/gh-set-secret.sh",
+    "demo": "bash scripts/demo/run-all-scenarios.sh",
+    "demo:missing-adr": "bash scripts/demo/simulate-missing-adr.sh",
+    "demo:bad-import": "bash scripts/demo/simulate-bad-import.sh",
+    "demo:bad-structure": "bash scripts/demo/simulate-bad-structure.sh",
+    "speckit:specify": "bash scripts/speckit/specify.sh",
+    "speckit:plan": "bash scripts/speckit/plan.sh",
+    "speckit:tasks": "bash scripts/speckit/tasks.sh"
+  },
+  "keywords": [
+    "devoxx",
+    "spec-kit",
+    "governance",
+    "clean-architecture",
+    "devex"
+  ],
+  "author": "Devoxx 2026 Team",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@typescript-eslint/eslint-plugin": "^6.9.0",
+    "@typescript-eslint/parser": "^6.9.0",
+    "@vitest/coverage-v8": "^4.0.18",
+    "@vitest/ui": "^4.0.18",
+    "eslint": "^8.47.0",
+    "husky": "^8.0.3",
+    "lint-staged": "^13.0.3",
+    "prettier": "^2.8.8",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3",
+    "vitest": "^4.0.18"
+  },
+  "lint-staged": {
+    "src/**/*.{ts,tsx,js,jsx,json,md}": [
+      "prettier --write",
+      "eslint --config .eslintrc.cjs --fix",
+      "git add"
+    ]
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

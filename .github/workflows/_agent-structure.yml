@@ -1,0 +1,95 @@
+# Reusable Workflow: Structure Validator Agent
+# Called by main orchestrator to validate Clean Architecture structure
+
+name: 'Agent: Structure Validator'
+
+on:
+  workflow_call:
+    inputs:
+      changed-files:
+        description: 'Space-separated list of changed files'
+        required: false
+        type: string
+        default: ''
+      branch-name:
+        description: 'Current branch name'
+        required: false
+        type: string
+        default: ''
+      feature-name:
+        description: 'Feature name extracted from branch'
+        required: false
+        type: string
+        default: ''
+      # Spec-kit context inputs
+      has-specs:
+        description: 'Whether Spec-kit artifacts exist (true/false)'
+        required: false
+        type: string
+        default: 'false'
+      validation-mode:
+        description: 'Validation mode: speckit or legacy'
+        required: false
+        type: string
+        default: 'legacy'
+      planned-files:
+        description: 'JSON array of planned files from plan.md'
+        required: false
+        type: string
+        default: '[]'
+    outputs:
+      status:
+        description: 'Agent status (PASS/FAIL/NEEDS_REVIEW)'
+        value: ${{ jobs.validate.outputs.status }}
+      score:
+        description: 'Agent score (0-100)'
+        value: ${{ jobs.validate.outputs.score }}
+      report-json:
+        description: 'Path to JSON report'
+        value: ${{ jobs.validate.outputs.report-json }}
+    secrets:
+      ANTHROPIC_API_KEY:
+        required: true
+
+jobs:
+  validate:
+    name: Structure Validation
+    runs-on: ubuntu-latest
+    outputs:
+      status: ${{ steps.agent.outputs.status }}
+      score: ${{ steps.agent.outputs.score }}
+      report-json: ${{ steps.agent.outputs.report-json }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Environment
+        uses: ./.github/actions/setup-environment
+        with:
+          install-speckit-cli: 'false'
+
+      - name: Run Structure Validator Agent
+        id: agent
+        uses: ./.github/actions/run-agent
+        with:
+          agent-name: 'structure-validator'
+          changed-files: ${{ inputs.changed-files }}
+          branch-name: ${{ inputs.branch-name }}
+          feature-name: ${{ inputs.feature-name }}
+          # Spec-kit context
+          has-specs: ${{ inputs.has-specs }}
+          validation-mode: ${{ inputs.validation-mode }}
+          planned-files: ${{ inputs.planned-files }}
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
+      - name: Upload Report Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: structure-validation-report
+          path: |
+            structure-validation-report.json
+            structure-validation-report.md
+          retention-days: 7
+          if-no-files-found: warn

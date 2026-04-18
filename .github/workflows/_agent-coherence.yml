@@ -1,0 +1,95 @@
+# Reusable Workflow: Coherence Checker Agent
+# Called by main orchestrator to validate code-documentation coherence
+
+name: 'Agent: Coherence Checker'
+
+on:
+  workflow_call:
+    inputs:
+      changed-files:
+        description: 'Space-separated list of changed files'
+        required: false
+        type: string
+        default: ''
+      branch-name:
+        description: 'Current branch name'
+        required: false
+        type: string
+        default: ''
+      feature-name:
+        description: 'Feature name extracted from branch'
+        required: false
+        type: string
+        default: ''
+      # Spec-kit context inputs
+      has-specs:
+        description: 'Whether Spec-kit artifacts exist (true/false)'
+        required: false
+        type: string
+        default: 'false'
+      validation-mode:
+        description: 'Validation mode: speckit or legacy'
+        required: false
+        type: string
+        default: 'legacy'
+      user-stories:
+        description: 'JSON array of user stories from spec.md'
+        required: false
+        type: string
+        default: '[]'
+    outputs:
+      status:
+        description: 'Agent status (PASS/FAIL/NEEDS_REVIEW)'
+        value: ${{ jobs.check.outputs.status }}
+      score:
+        description: 'Agent score (0-100)'
+        value: ${{ jobs.check.outputs.score }}
+      report-json:
+        description: 'Path to JSON report'
+        value: ${{ jobs.check.outputs.report-json }}
+    secrets:
+      ANTHROPIC_API_KEY:
+        required: true
+
+jobs:
+  check:
+    name: Coherence Check
+    runs-on: ubuntu-latest
+    outputs:
+      status: ${{ steps.agent.outputs.status }}
+      score: ${{ steps.agent.outputs.score }}
+      report-json: ${{ steps.agent.outputs.report-json }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Environment
+        uses: ./.github/actions/setup-environment
+        with:
+          install-speckit-cli: 'false'
+
+      - name: Run Coherence Checker Agent
+        id: agent
+        uses: ./.github/actions/run-agent
+        with:
+          agent-name: 'coherence-checker'
+          changed-files: ${{ inputs.changed-files }}
+          branch-name: ${{ inputs.branch-name }}
+          feature-name: ${{ inputs.feature-name }}
+          # Spec-kit context
+          has-specs: ${{ inputs.has-specs }}
+          validation-mode: ${{ inputs.validation-mode }}
+          user-stories: ${{ inputs.user-stories }}
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
+      - name: Upload Report Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coherence-check-report
+          path: |
+            coherence-check-report.json
+            coherence-check-report.md
+          retention-days: 7
+          if-no-files-found: warn

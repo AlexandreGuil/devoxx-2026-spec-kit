@@ -1,0 +1,93 @@
+name: 'Post Governance PR Comment'
+description: 'Posts or updates a formatted PR comment with governance results'
+
+inputs:
+  github-token:
+    description: 'GitHub token for API access'
+    required: true
+  overall-status:
+    description: 'Overall compliance status (PASS/FAIL)'
+    required: true
+  overall-score:
+    description: 'Overall compliance score (0-100)'
+    required: true
+  threshold:
+    description: 'Compliance threshold'
+    required: false
+    default: '80'
+  structure-report:
+    description: 'Path to structure validation JSON report'
+    required: false
+    default: 'structure-validation-report.json'
+  adr-report:
+    description: 'Path to ADR review JSON report'
+    required: false
+    default: 'adr-review-report.json'
+  coherence-report:
+    description: 'Path to coherence check JSON report'
+    required: false
+    default: 'coherence-check-report.json'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Generate Formatted Comment
+      id: format
+      shell: bash
+      run: |
+        node .github/scripts/format-pr-comment.js \
+          --structure "${{ inputs.structure-report }}" \
+          --adr "${{ inputs.adr-report }}" \
+          --coherence "${{ inputs.coherence-report }}" \
+          --status "${{ inputs.overall-status }}" \
+          --score "${{ inputs.overall-score }}" \
+          --threshold "${{ inputs.threshold }}" \
+          --output "pr-comment.md"
+
+    - name: Post or Update PR Comment
+      uses: actions/github-script@v7
+      with:
+        github-token: ${{ inputs.github-token }}
+        script: |
+          const fs = require('fs');
+
+          // Read the formatted comment
+          let comment = '';
+          if (fs.existsSync('pr-comment.md')) {
+            comment = fs.readFileSync('pr-comment.md', 'utf8');
+          } else {
+            comment = '## 🛡️ Spec-kit Governance Report\n\n⚠️ Report generation failed.';
+          }
+
+          // Add marker for idempotent updates
+          const marker = '<!-- spec-kit-governance-report -->';
+          const body = marker + '\n' + comment;
+
+          // Find existing comment
+          const { data: comments } = await github.rest.issues.listComments({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: context.issue.number,
+          });
+
+          const existing = comments.find(c => c.body && c.body.includes(marker));
+
+          if (existing) {
+            // Update existing comment
+            await github.rest.issues.updateComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: existing.id,
+              body: body
+            });
+            console.log('✅ Updated existing PR comment');
+          } else {
+            // Create new comment
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: body
+            });
+            console.log('✅ Created new PR comment');
+          }

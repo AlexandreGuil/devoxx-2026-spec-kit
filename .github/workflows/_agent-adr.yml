@@ -1,0 +1,107 @@
+# Reusable Workflow: ADR Reviewer Agent
+# Called by main orchestrator to validate ADR presence and relevance
+
+name: 'Agent: ADR Reviewer'
+
+on:
+  workflow_call:
+    inputs:
+      changed-files:
+        description: 'Space-separated list of changed files'
+        required: false
+        type: string
+        default: ''
+      branch-name:
+        description: 'Current branch name'
+        required: false
+        type: string
+        default: ''
+      feature-name:
+        description: 'Feature name extracted from branch'
+        required: false
+        type: string
+        default: ''
+      domain-changes:
+        description: 'Domain/application file changes'
+        required: false
+        type: string
+        default: ''
+      adr-changes:
+        description: 'ADR file changes'
+        required: false
+        type: string
+        default: ''
+      # Spec-kit context inputs
+      has-specs:
+        description: 'Whether Spec-kit artifacts exist (true/false)'
+        required: false
+        type: string
+        default: 'false'
+      validation-mode:
+        description: 'Validation mode: speckit or legacy'
+        required: false
+        type: string
+        default: 'legacy'
+      governance-tasks:
+        description: 'JSON array of TGOV governance tasks from tasks.md'
+        required: false
+        type: string
+        default: '[]'
+    outputs:
+      status:
+        description: 'Agent status (PASS/FAIL/NEEDS_REVIEW)'
+        value: ${{ jobs.review.outputs.status }}
+      score:
+        description: 'Agent score (0-100)'
+        value: ${{ jobs.review.outputs.score }}
+      report-json:
+        description: 'Path to JSON report'
+        value: ${{ jobs.review.outputs.report-json }}
+    secrets:
+      ANTHROPIC_API_KEY:
+        required: true
+
+jobs:
+  review:
+    name: ADR Review
+    runs-on: ubuntu-latest
+    outputs:
+      status: ${{ steps.agent.outputs.status }}
+      score: ${{ steps.agent.outputs.score }}
+      report-json: ${{ steps.agent.outputs.report-json }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Environment
+        uses: ./.github/actions/setup-environment
+        with:
+          install-speckit-cli: 'false'
+
+      - name: Run ADR Reviewer Agent
+        id: agent
+        uses: ./.github/actions/run-agent
+        with:
+          agent-name: 'adr-reviewer'
+          changed-files: ${{ inputs.changed-files }}
+          branch-name: ${{ inputs.branch-name }}
+          feature-name: ${{ inputs.feature-name }}
+          domain-changes: ${{ inputs.domain-changes }}
+          adr-changes: ${{ inputs.adr-changes }}
+          # Spec-kit context
+          has-specs: ${{ inputs.has-specs }}
+          validation-mode: ${{ inputs.validation-mode }}
+          governance-tasks: ${{ inputs.governance-tasks }}
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
+      - name: Upload Report Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: adr-review-report
+          path: |
+            adr-review-report.json
+            adr-review-report.md
+          retention-days: 7
+          if-no-files-found: warn
