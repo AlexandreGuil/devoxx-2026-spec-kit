@@ -35,11 +35,25 @@ export class InvalidTitleLengthError extends Error {
 }
 
 /**
+ * InvalidSpeakerCountError (Domain Error)
+ * Thrown when the number of speakers is outside the allowed range (1-3).
+ */
+export class InvalidSpeakerCountError extends Error {
+  constructor(actualCount: number) {
+    super(
+      `Speaker count (${actualCount} speakers) is invalid. A talk must have between 1 and 3 speakers.`,
+    );
+    this.name = 'InvalidSpeakerCountError';
+  }
+}
+
+/**
  * Talk (Domain Entity)
  * Represents a conference session submitted to Devoxx.
  *
  * Invariants:
- *  - id, title, speakerName must be non-empty strings
+ *  - id, title must be non-empty strings
+ *  - speakers must contain between 1 and 3 entries
  *  - duration must be exactly 15, 30, 45, or 90 minutes
  *
  * Immutability: All mutation methods return a NEW instance.
@@ -50,7 +64,7 @@ export class Talk {
     public readonly id: string,
     public readonly title: string,
     public readonly abstract: string,
-    public readonly speakerName: string,
+    public readonly speakers: string[],
     private readonly _duration: Duration,
   ) {
     if (!id || id.trim() === '') {
@@ -62,8 +76,11 @@ export class Talk {
     if (title.length > 100) {
       throw new InvalidTitleLengthError(title.length);
     }
-    if (!speakerName || speakerName.trim() === '') {
-      throw new Error('Talk speakerName must be provided');
+    if (!speakers || speakers.length === 0) {
+      throw new InvalidSpeakerCountError(0);
+    }
+    if (speakers.length > 3) {
+      throw new InvalidSpeakerCountError(speakers.length);
     }
     if (!this.isValidDuration(_duration)) {
       throw new InvalidDurationError(_duration);
@@ -103,7 +120,7 @@ export class Talk {
     if (!this.isValidDuration(newDuration)) {
       throw new InvalidDurationError(newDuration);
     }
-    return new Talk(this.id, this.title, this.abstract, this.speakerName, newDuration as Duration);
+    return new Talk(this.id, this.title, this.abstract, this.speakers, newDuration as Duration);
   }
 
   /**
