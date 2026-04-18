@@ -15,7 +15,7 @@ export type Duration = 15 | 30 | 45 | 90;
 export class InvalidDurationError extends Error {
   constructor(value: number) {
     super(
-      `Invalid duration: ${value}. Duration must be 15 (Quickie), 30 (Tools-in-Action), 45 (Conference), or 90 (Deep Dive) minutes.`,
+      \x60Invalid duration: ${value}. Duration must be 15 (Quickie), 30 (Tools-in-Action), 45 (Conference), or 90 (Deep Dive) minutes.\x60,
     );
     this.name = 'InvalidDurationError';
   }
@@ -28,9 +28,22 @@ export class InvalidDurationError extends Error {
 export class InvalidTitleLengthError extends Error {
   constructor(actualLength: number) {
     super(
-      `Title length (${actualLength} characters) exceeds the maximum allowed length of 100 characters`,
+      \x60Title length (${actualLength} characters) exceeds the maximum allowed length of 100 characters\x60,
     );
     this.name = 'InvalidTitleLengthError';
+  }
+}
+
+/**
+ * InvalidAbstractLengthError (Domain Error)
+ * Thrown when a talk abstract exceeds the maximum allowed length of 500 characters.
+ */
+export class InvalidAbstractLengthError extends Error {
+  constructor(actualLength: number) {
+    super(
+      \x60Abstract length (${actualLength} characters) exceeds the maximum allowed length of 500 characters\x60,
+    );
+    this.name = 'InvalidAbstractLengthError';
   }
 }
 
@@ -61,6 +74,9 @@ export class Talk {
     }
     if (title.length > 100) {
       throw new InvalidTitleLengthError(title.length);
+    }
+    if (abstract.length > 500) {
+      throw new InvalidAbstractLengthError(abstract.length);
     }
     if (!speakerName || speakerName.trim() === '') {
       throw new Error('Talk speakerName must be provided');
