@@ -35,11 +35,27 @@ export class InvalidTitleLengthError extends Error {
 }
 
 /**
+ * InvalidBioLengthError (Domain Error)
+ * Thrown when a speaker bio is outside the allowed range of 50-500 characters.
+ */
+export class InvalidBioLengthError extends Error {
+  constructor(actualLength: number, constraint: { min: number; max: number }) {
+    const message =
+      actualLength < constraint.min
+        ? `Bio length (${actualLength} characters) is below the minimum of ${constraint.min} characters`
+        : `Bio length (${actualLength} characters) exceeds the maximum of ${constraint.max} characters`;
+    super(message);
+    this.name = 'InvalidBioLengthError';
+  }
+}
+
+/**
  * Talk (Domain Entity)
  * Represents a conference session submitted to Devoxx.
  *
  * Invariants:
  *  - id, title, speakerName must be non-empty strings
+ *  - bio must be between 50 and 500 characters (after trimming)
  *  - duration must be exactly 15, 30, 45, or 90 minutes
  *
  * Immutability: All mutation methods return a NEW instance.
@@ -51,6 +67,7 @@ export class Talk {
     public readonly title: string,
     public readonly abstract: string,
     public readonly speakerName: string,
+    public readonly bio: string,
     private readonly _duration: Duration,
   ) {
     if (!id || id.trim() === '') {
@@ -64,6 +81,10 @@ export class Talk {
     }
     if (!speakerName || speakerName.trim() === '') {
       throw new Error('Talk speakerName must be provided');
+    }
+    const trimmedBio = bio.trim();
+    if (trimmedBio.length < 50 || trimmedBio.length > 500) {
+      throw new InvalidBioLengthError(trimmedBio.length, { min: 50, max: 500 });
     }
     if (!this.isValidDuration(_duration)) {
       throw new InvalidDurationError(_duration);
@@ -103,7 +124,14 @@ export class Talk {
     if (!this.isValidDuration(newDuration)) {
       throw new InvalidDurationError(newDuration);
     }
-    return new Talk(this.id, this.title, this.abstract, this.speakerName, newDuration as Duration);
+    return new Talk(
+      this.id,
+      this.title,
+      this.abstract,
+      this.speakerName,
+      this.bio,
+      newDuration as Duration,
+    );
   }
 
   /**
