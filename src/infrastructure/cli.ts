@@ -12,69 +12,64 @@ import { ListTalksUseCase } from '../application/list-talks.usecase.js';
 import { SubmitTalkUseCase } from '../application/submit-talk.usecase.js';
 
 async function main() {
-  console.log('🎤 Portail Devoxx 2026 - Talk Management Demo\n');
+  console.log('Portail Devoxx 2026 - Talk Management Demo\n');
 
-  // Dependency injection (composition root)
   const repository = new InMemoryTalkRepository();
   const listTalks = new ListTalksUseCase(repository);
   const submitTalk = new SubmitTalkUseCase(repository);
 
-  // Demo 1: List existing talks
-  console.log('📋 Talks soumis :');
-  console.log('─'.repeat(60));
+  console.log('Talks soumis :');
+  console.log('-'.repeat(60));
 
   const talks = await listTalks.execute();
   talks.forEach((talk) => {
-    const formatIcon =
-      talk.format === 'Quickie' ? '⚡' : talk.format === 'Tools-in-Action' ? '🔧' : '🎯';
-    console.log(`  ${formatIcon} [${talk.format}] ${talk.title}`);
-    console.log(`     👤 ${talk.speakerName} | ⏱️  ${talk.duration} min`);
+    console.log(`  [${talk.format}] ${talk.title}`);
+    console.log(`     ${talk.speakerName} | ${talk.duration} min`);
     console.log();
   });
 
-  // Demo 2: Submit a new talk
-  console.log('─'.repeat(60));
-  console.log("📝 Soumission d'un nouveau talk...\n");
+  console.log('-'.repeat(60));
+  console.log("Soumission d'un nouveau talk...\n");
 
   const newTalk = await submitTalk.execute({
     id: 'talk-004',
     title: 'Machine-Readable Governance avec GitHub Spec-kit',
-    abstract:
-      'Comment industrialiser vos ADRs et READMEs pour que la documentation devienne votre meilleur gardien.',
+    abstract: 'Comment industrialiser vos ADRs et READMEs pour que la documentation devienne votre meilleur gardien.',
     speakerName: 'Alex Demo',
+    bio: 'Ingenieur logiciel passionne par la gouvernance automatisee et les pratiques DevOps modernes. Speaker regulier dans les conferences tech.',
     duration: 30,
   });
 
-  console.log(`  ✅ Talk soumis avec succès !`);
-  console.log(`     📌 "${newTalk.title}"`);
-  console.log(`     👤 ${newTalk.speakerName}`);
-  console.log(`     🔧 Format: ${newTalk.format} (${newTalk.duration} min)`);
+  console.log('  Talk soumis avec succes !');
+  console.log(`     "${newTalk.title}"`);
+  console.log(`     ${newTalk.speakerName}`);
+  console.log(`     Format: ${newTalk.format} (${newTalk.duration} min)`);
 
-  // Demo 3: Show domain rule enforcement
-  console.log('\n' + '─'.repeat(60));
-  console.log('🛡️  Démonstration de la règle métier (durée invalide)...\n');
+  console.log('\n' + '-'.repeat(60));
+  console.log('Demonstration de la regle metier (duree invalide)...\n');
 
   try {
     await submitTalk.execute({
       id: 'talk-005',
-      title: 'Talk avec durée invalide',
+      title: 'Talk avec duree invalide',
       abstract: 'Ce talk ne devrait pas passer la validation.',
       speakerName: 'Test Speaker',
-      duration: 20 as 15, // Invalid duration - will throw
+      bio: 'Speaker experimentee avec plus de 10 ans dans le developpement logiciel et les architectures distribuees.',
+      duration: 20 as 15,
     });
   } catch (error) {
     if (error instanceof Error) {
-      console.log(`  ❌ Erreur métier capturée :`);
+      console.log('  Erreur metier capturee :');
       console.log(`     ${error.message}`);
     }
   }
 
-  console.log('\n✨ Clean Architecture en action !');
-  console.log('   Domain → Application → Infrastructure');
-  console.log('   Les règles métier vivent dans le Domain.\n');
+  console.log('\nClean Architecture en action !');
+  console.log('   Domain -> Application -> Infrastructure');
+  console.log('   Les regles metier vivent dans le Domain.\n');
 }
 
 main().catch((error) => {
-  console.error('❌ Erreur fatale :', error.message);
+  console.error('Erreur fatale :', error.message);
   process.exit(1);
 });

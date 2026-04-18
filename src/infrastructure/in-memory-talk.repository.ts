@@ -16,23 +16,26 @@ export class InMemoryTalkRepository implements TalkRepository {
     const demoTalks: Talk[] = [
       new Talk(
         'talk-001',
-        'Stop à la dette documentaire avec Spec-kit',
-        'Découvrez comment GitHub Spec-kit transforme votre documentation en validation automatique.',
+        'Stop a la dette documentaire avec Spec-kit',
+        'Decouvrez comment GitHub Spec-kit transforme votre documentation en validation automatique.',
         'Alexandre Guillemot',
+        'Architecte logiciel chez WeScale, Alexandre accompagne les equipes dans leur transformation DevOps et Cloud Native depuis 8 ans.',
         30,
       ),
       new Talk(
         'talk-002',
         'Clean Architecture en 15 minutes',
-        'Les principes essentiels de la Clean Architecture expliqués rapidement.',
+        'Les principes essentiels de la Clean Architecture expliques rapidement.',
         'Marie Dupont',
+        'Developpeuse senior specialisee en architecture logicielle et Domain-Driven Design. Contributrice active a la communaute TypeScript francophone.',
         15,
       ),
       new Talk(
         'talk-003',
-        'TypeScript avancé pour le Domain-Driven Design',
-        'Techniques TypeScript pour modéliser des domaines métier riches et expressifs.',
+        'TypeScript avance pour le Domain-Driven Design',
+        'Techniques TypeScript pour modeliser des domaines metier riches et expressifs.',
         'Jean Martin',
+        'Consultant independant en ingenierie logicielle, Jean intervient sur des projets complexes alliant TypeScript, DDD et architecture hexagonale.',
         45,
       ),
     ];
