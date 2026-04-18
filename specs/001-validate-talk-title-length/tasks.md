@@ -349,7 +349,6 @@
   Refs: specs/001-validate-talk-title-length/spec.md
   ADR: docs/adrs/0005-validation-titre.md
 
-  Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>"
   ```
 
 **Checkpoint**: Feature complete and ready for PR

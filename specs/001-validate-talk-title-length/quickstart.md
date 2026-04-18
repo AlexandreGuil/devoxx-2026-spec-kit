@@ -495,7 +495,6 @@ git commit -m "feat: add title length validation for talks
 
 Refs: ADR-0005, FR-001, FR-002, FR-003, FR-004
 
-Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>"
 ```
 
 ---

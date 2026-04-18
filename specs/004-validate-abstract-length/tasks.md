@@ -281,7 +281,6 @@
 
   Refs: ADR-0007, FR-001, FR-002, FR-003, FR-004, FR-005
 
-  Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>"
   ```
 
 **Checkpoint**: ✅ Changes committed, ready for PR
